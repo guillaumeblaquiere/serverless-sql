@@ -110,6 +110,7 @@ func handleRequest(conn net.Conn) {
 
 	reader, writer := io.Pipe()
 
+	// TODO add security header
 	req := &http.Request{
 		Method: "POST",
 		URL:    targetUrl,
