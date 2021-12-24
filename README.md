@@ -22,7 +22,7 @@ That container is composed of 2 parts
 The process is the following
 1. The database engine starts when the container starts. The data are loaded from Cloud Storage, gunzip and untar
 2. The database engine runs in the container and use the data loaded in the memory of the container
-3. When the container is stoped (signals TERM or INT received), the data are tar and gzip and sent to Cloud Storage
+3. When the container is stopped (signals TERM or INT received), the data are tar and gzip and sent to Cloud Storage
 
 The use of the HTTP endpoint is described in the "Communication between the 2 parties" section
 
@@ -40,8 +40,57 @@ exchange data. The proxy initiate the connection.
 
 # Deployment of the database
 
+To deploy the database on Cloud Run follow these steps:
+
+1. Create a bucket (you can also reuse an existing one)
+```
+gsutil mb gs://<BUCKET_NAME>
+```
+2. (optional) Create a service account with the permission to read and write to the bucket
+```
+# Create the service account
+gcloud iam service-accounts create <SA_NAME>
+
+# Get the SA email
+gcloud iam service-accounts list --format="value(email)" | grep <SA_NAME>
+
+# Grant the permission on the bucket
+gsutil iam ch serviceAccount:<SA_EMAIL>:objectAdmin gs://<BUCKET_NAME>
+```
+3. Deploy the container to Cloud Run
+```
+gcloud beta run deploy <SERVICE NAME> --platform=manager \
+  --region=<YOUR REGION> \
+  --image=TODO \
+  --service-account=<SA_EMAIL> #optional. Must have the permission on the bucket \
+  --allow-unauthenticated #optionnal. If not, proxy must use authenticated mode \
+  --execution-environment gen2 \
+  --max-instances=1 \
+  --memory 1024Mi \
+  --use-http2 \
+  --set-env-vars=BUCKET=<BUCKET_NAME>,ROOT_PASSWORD=<DB ROOT PASSWORD>   
+```
+
+**Parameters' explanation**
+
+* **service-account**: *optional*. Must have the permission on the bucket 
+* **allow-unauthenticated**: *optional*. If not set, proxy must use authenticated mode 
+* **execution-environment**: The gen2 runtime isn't sandboxed and you won't have runtime warning because of that 
+ sandbox. But also work on gen1 runtime
+* **max-instances=1**: multi master isn't possible. Only 1 instance can be use at a time.
+* **memory 1024Mi**: minimum memory to load the database engine and data in memory. Must be increase if the database
+becomes bigger.
+* **use-http2**: HTTP/2 protocol in bidirectional streaming is used to communicate between the proxy and the service
+* **set-env-vars**: Minimal environment variable:
+  * **BUCKET**: Name of the bucket to get and store the database data
+  * **ROOT_PASSWORD**: Root password to connect to the database.
+
+Use the URL provided by the deployment in the proxy to connect it
 
 # Use of the proxy
+
+The proxy wrap the database TCP client connection in HTTP/2 protocol and call the serverless sql service running on 
+Cloud Run (but can run elsewhere)
 
 ## Use proxy locally
 

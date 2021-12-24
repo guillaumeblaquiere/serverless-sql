@@ -30,6 +30,9 @@ if [ -f ${ARCHIVE_NAME}.gz ]; then
   rm ${ARCHIVE_NAME}
 fi
 
+//TDOO use secret manager
+MYSQL_ROOT_PASSWORD=$ROOT_PASSWORD
+
 # Run MySQL service
 source docker-entrypoint.sh
 _main "mysqld" &
