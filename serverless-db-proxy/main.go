@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/idtoken"
+	"google.golang.org/api/option"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,6 +31,7 @@ var targetUrl *url.URL
 var globalCtx context.Context
 var globalContextCancelled bool
 var noTLS bool
+var client *http.Client
 
 func main() {
 
@@ -62,6 +67,12 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	go gracefulTermination(sigs, cancel)
+
+	cred, err := google.FindDefaultCredentials(globalCtx)
+	client, err = idtoken.NewClient(globalCtx, URL, option.With)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	// Listen for incoming connections.
 	l, err := net.Listen(ConnType, ConnHost+":"+ConnPort)
@@ -118,7 +129,7 @@ func handleRequest(conn net.Conn) {
 		Body:   ioutil.NopCloser(reader),
 	}
 
-	client := http.DefaultClient
+	//client := http.DefaultClient
 	client.Transport = &http2.Transport{}
 
 	if noTLS {
