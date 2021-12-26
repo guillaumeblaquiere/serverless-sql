@@ -51,9 +51,34 @@ exchange data. The proxy initiate the connection.
 
 To deploy the database on Cloud Run follow these steps:
 
-1. Create a bucket (you can also reuse an existing one)
+1. Create a bucket (you can also reuse an existing one) and, optionally, activate the versioning and set a lifecycle to
+limit the versioning depth and cost
 ```
+# Create the bucket
 gsutil mb gs://<BUCKET_NAME>
+
+# Optional, activate the versioning
+gsutil versioning set on gs://<BUCKET_NAME>
+
+# Optional, set a lifecycle to limit versioning depth. Here keep 10 backup versions 
+cat > lifecycle.json  << EOF
+{
+  "lifecycle": {
+    "rule": [
+    {
+    "action": {"type": "Delete"},
+    "condition": {
+      "numNewerVersions": 10,
+      "isLive": false
+    }
+  }
+  ]
+  }
+}
+EOF
+
+gsutil lifecycle set lifecycle.json gs://<BUCKET_NAME>
+
 ```
 2. (optional) Create a service account with the permission to read and write to the bucket
 ```
