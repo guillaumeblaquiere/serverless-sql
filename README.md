@@ -1,7 +1,7 @@
 # Overview
 
 That proof of concept use Cloud Run to deploy a SQL database on demand. That solution prevent to use Cloud SQL for 
-development database or for non critical and low usage production database.
+development database or for non-critical and low usage production database.
 
 TODO -> link to Medium Article
 
@@ -11,6 +11,15 @@ There is 2 parts at that solution
 
 * the serverless sql container
 * the serverless database proxy
+
+# Quick links
+
+* Packaged container to deploy on Cloud Run (or elsewhere): 
+  * `us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql`
+* Compiled serverless db proxy
+  * [Windows/amd64](https://storage.cloud.google.com/serverless-db-proxy/master/win64/serverless-db-proxy.exe)
+  * [Linux/amd64](https://storage.cloud.google.com/serverless-db-proxy/master/linux64/serverless-db-proxy)
+  * [Darwin/amd64](https://storage.cloud.google.com/serverless-db-proxy/master/darwin64/serverless-db-proxy)
 
 ## Serverless sql container
 
@@ -61,7 +70,7 @@ gsutil iam ch serviceAccount:<SA_EMAIL>:objectAdmin gs://<BUCKET_NAME>
 ```
 gcloud beta run deploy <SERVICE NAME> --platform=manager \
   --region=<YOUR REGION> \
-  --image=TODO \
+  --image=us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql \
   --service-account=<SA_EMAIL> #optional. Must have the permission on the bucket \
   --allow-unauthenticated #optionnal. If not, proxy must use authenticated mode \
   --execution-environment gen2 \
@@ -91,6 +100,8 @@ Use the URL provided by the deployment in the proxy to connect it
 
 The proxy wrap the database TCP client connection in HTTP/2 protocol and call the serverless sql service running on 
 Cloud Run (but can run elsewhere)
+
+Download the version of the proxy for your environment (see "Quick Links")
 
 ## Use proxy locally
 

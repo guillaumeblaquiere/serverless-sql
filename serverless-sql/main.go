@@ -20,8 +20,10 @@ const (
 	BufferLength = 1024
 )
 
-var globalCtx context.Context
-var globalContextCancelled bool
+var (
+	globalCtx                context.Context // Global context to close all the connection in case ot sig TERM or INT
+	isGlobalContextCancelled bool            // Has the global context been cancelled or not?
+)
 
 func main() {
 
@@ -42,7 +44,7 @@ func main() {
 	var cancel context.CancelFunc
 	globalCtx = context.Background()
 	globalCtx, cancel = context.WithCancel(globalCtx)
-	globalContextCancelled = false
+	isGlobalContextCancelled = false
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -64,7 +66,7 @@ func main() {
 		conn, err := lis.Accept()
 		if err != nil {
 			// Graceful exit. Exit
-			if globalContextCancelled {
+			if isGlobalContextCancelled {
 				fmt.Println("Stop http2 listening.")
 				break
 			}
@@ -80,9 +82,11 @@ func gracefulTermination(sigs chan os.Signal, cancel context.CancelFunc) {
 	fmt.Printf("Signal received %s; Cancel the global context\n", sig)
 
 	cancel()
-	globalContextCancelled = true
+	isGlobalContextCancelled = true
 }
 
+// Loop 30 seconds to establish a connection with the local MySQL server.
+// Test the connection status every 50ms (in case of cold start, it can take time)
 func establishMysqlConnection() (conn net.Conn, err error) {
 
 	timeout := false
@@ -111,6 +115,7 @@ func establishMysqlConnection() (conn net.Conn, err error) {
 func ProxyListener(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("New connection. Let's establish MySQL connection")
+	// Try to establish the connection with the local MySQL database.
 	conn, err := establishMysqlConnection()
 
 	if err != nil {
@@ -135,11 +140,14 @@ func ProxyListener(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Connection closed. Client disconnected")
 	}()
 
+	// Bidirectional proxy connections.
 	go copyChannel(r.Body, conn, cancel)
 	copyChannel(conn, w, cancel)
 
 }
 
+// Proxy the connection: Copy the data from the source and write them to the destination.
+// Exit on channel close, and cancel the context if detected.
 func copyChannel(in io.Reader, out io.Writer, cancel context.CancelFunc) {
 	for {
 		buf := make([]byte, BufferLength)

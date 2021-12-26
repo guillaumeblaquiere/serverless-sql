@@ -1,0 +1,24 @@
+steps:
+#TODO create serverless SQL image
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: serverless-sql
+    args: [ 'build', '-t', 'us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql', '.' ]
+  - name: 'gcr.io/cloud-builders/go'
+    entrypoint: "/bin/sh"
+    dir: serverless-db-proxy
+    args:
+      - -c
+      - |
+        GOARCH=amd64 GOOS=windows go build -o win64/serverless-db-proxy.exe main.go
+        GOARCH=amd64 GOOS=linux go build -o linux64/serverless-db-proxy main.go
+        GOARCH=amd64 GOOS=darwin go build -o darwin64/serverless-db-proxy main.go
+  - name: 'gcr.io/cloud-builders/gsutil'
+    entrypoint: "/bin/sh"
+    dir: serverless-db-proxy
+    args:
+      - -c
+      - |
+        gsutil -h 'Content-Disposition:filename=serverless-db-proxy.exe' cp win64/serverless-db-proxy.exe gs://serverless-db-proxy/$BRANCH_NAME/win64/
+        gsutil -h 'Content-Disposition:filename=serverless-db-proxy'  cp linux64/serverless-db-proxy gs://serverless-db-proxy/$BRANCH_NAME/linux64/
+        gsutil -h 'Content-Disposition:filename=serverless-db-proxy'  cp darwin64/serverless-db-proxy gs://serverless-db-proxy/$BRANCH_NAME/darwin64/
+images: ['us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql']

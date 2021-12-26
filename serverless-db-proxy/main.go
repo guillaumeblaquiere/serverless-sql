@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
-	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2"
 	"google.golang.org/api/idtoken"
-	"google.golang.org/api/option"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,11 +25,14 @@ const (
 	BufferLength = 1024
 )
 
-var targetUrl *url.URL
-var globalCtx context.Context
-var globalContextCancelled bool
-var noTLS bool
-var client *http.Client
+var (
+	targetUrl                *url.URL             // URL of the http service to reach.
+	globalCtx                context.Context      // Global context to close all the connection in case ot sig TERM or INT
+	isGlobalContextCancelled bool                 // Has the global context been cancelled or not?
+	isWithoutTLS             bool                 // Does the HTTP/2 require TLS or not (h2c, for local testing)?
+	client                   = http.DefaultClient // Global HTTP client definition
+	ts                       oauth2.TokenSource   // Identity token source to add in the request authorization header
+)
 
 func main() {
 
@@ -50,28 +51,46 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Get the noTLS environment variable, especially for local tests
+	// Get the isWithoutTLS environment variable, especially for local tests
 	noTlSEnv := os.Getenv("NOTLS")
 	if strings.ToLower(noTlSEnv) == "true" {
-		noTLS = true
+		isWithoutTLS = true
 	}
-	fmt.Printf("service URL is %s. TLS mode is %v\n", URL, noTLS)
+	fmt.Printf("service URL is %s. TLS mode is %v\n", URL, isWithoutTLS)
+
+	// Create the client
+	client.Transport = &http2.Transport{}
+
+	if isWithoutTLS {
+		client.Transport = &http2.Transport{
+			// So http2.Transport doesn't complain the URL scheme isn't 'https'
+			AllowHTTP: true,
+			// Pretend we are dialing a TLS endpoint.
+			// Note, we ignore the passed tls.Config
+			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+				return net.Dial(network, addr)
+			},
+		}
+	}
 
 	// Manage graceful termination
 	var cancel context.CancelFunc
 	globalCtx = context.Background()
 	globalCtx, cancel = context.WithCancel(globalCtx)
-	globalContextCancelled = false
+	isGlobalContextCancelled = false
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	go gracefulTermination(sigs, cancel)
 
-	cred, err := google.FindDefaultCredentials(globalCtx)
-	client, err = idtoken.NewClient(globalCtx, URL, option.With)
+	// Manage Cloud Run authentication with identity token support
+	//FIXME only service account key file and GCP metadata server. Need to several lib updates for impersonation support
+	ts, err = idtoken.NewTokenSource(globalCtx, URL)
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Printf("Impossible to create an identity token source because of err %s. The process continues "+
+			"without authentication\n", err)
+		ts = nil
 	}
 
 	// Listen for incoming connections.
@@ -94,7 +113,7 @@ func main() {
 		conn, err := l.Accept()
 		if err != nil {
 			// Graceful exit. Exit
-			if globalContextCancelled {
+			if isGlobalContextCancelled {
 				fmt.Println("Stop http2 listening.")
 				break
 			}
@@ -111,7 +130,7 @@ func gracefulTermination(sigs chan os.Signal, cancel context.CancelFunc) {
 	fmt.Printf("Signal received %s; Cancel the global context\n", sig)
 
 	cancel()
-	globalContextCancelled = true
+	isGlobalContextCancelled = true
 }
 
 // Handles incoming requests.
@@ -121,39 +140,45 @@ func handleRequest(conn net.Conn) {
 
 	reader, writer := io.Pipe()
 
-	// TODO add security header
-	req := &http.Request{
-		Method: "POST",
-		URL:    targetUrl,
-		Header: http.Header{},
-		Body:   ioutil.NopCloser(reader),
-	}
-
-	//client := http.DefaultClient
-	client.Transport = &http2.Transport{}
-
-	if noTLS {
-		client.Transport = &http2.Transport{
-			// So http2.Transport doesn't complain the URL scheme isn't 'https'
-			AllowHTTP: true,
-			// Pretend we are dialing a TLS endpoint.
-			// Note, we ignore the passed tls.Config
-			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-				return net.Dial(network, addr)
-			},
+	// Add, if possible authentication to the HTTP call
+	headers := http.Header{}
+	if ts != nil {
+		token, err := ts.Token()
+		if err != nil {
+			fmt.Printf("Impossible to create an identity token source because of err %s. The process continues "+
+				"without authentication\n", err)
+		} else {
+			headers.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
 		}
 	}
 
+	// Make the request
+	req := &http.Request{
+		Method: "POST",
+		URL:    targetUrl,
+		Header: headers,
+		Body:   ioutil.NopCloser(reader),
+	}
+
+	// Perform the request and check the status
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error sending handshake: %s\n", err)
+		conn.Close()
 		return
 	}
 
-	// Manage connection lifecycle
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("invalid request. HTTP code: %s\n", resp.Status)
+		conn.Close()
+		return
+	}
+
+	// Manage context
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
+	// Manage lifecycle on context
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -165,10 +190,13 @@ func handleRequest(conn net.Conn) {
 		resp.Body.Close()
 	}()
 
+	// Bidirectional proxy connections.
 	go copyChannel(resp.Body, conn, cancel)
 	copyChannel(conn, writer, cancel)
 }
 
+// Proxy the connection: Copy the data from the source and write them to the destination.
+// Exit on channel close, and cancel the context if detected.
 func copyChannel(in io.Reader, out io.Writer, cancel context.CancelFunc) {
 	for {
 		buf := make([]byte, BufferLength)
