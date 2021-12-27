@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"flag"
 	"fmt"
 	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
@@ -14,54 +15,64 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 )
 
 const (
 	ConnHost     = ""
-	ConnPort     = "3306"
 	ConnType     = "tcp"
 	BufferLength = 1024
 )
 
 var (
 	targetUrl                *url.URL             // URL of the http service to reach.
+	port                     int                  // The local port to listen for database connections
 	globalCtx                context.Context      // Global context to close all the connection in case ot sig TERM or INT
 	isGlobalContextCancelled bool                 // Has the global context been cancelled or not?
-	isWithoutTLS             bool                 // Does the HTTP/2 require TLS or not (h2c, for local testing)?
-	client                   = http.DefaultClient // Global HTTP client definition
+	isWithTLS                bool                 // Does the HTTP/2 require TLS or not (h2c, for local testing)?
 	ts                       oauth2.TokenSource   // Identity token source to add in the request authorization header
+	client                   = http.DefaultClient // Global HTTP client definition
 )
 
 func main() {
 
-	// TODO use param instead
+	URL := flag.String("url", "", "Endpoint URL where is deployed the serverless database. If empty "+
+		"or not set, the proxy exit gracefully")
+	noTLS := flag.Bool("no-tls", false, "Deactivate TLS support for HTTP/2. False per default, only "+
+		"for local tests")
+	flag.IntVar(&port, "port", 3306, "The local port to listen for database connections, must be "+
+		"between 1000 and 65535")
+	flag.Parse()
+
 	// Get the URL to reach
 	var err error
-	URL := os.Getenv("URL")
-	if URL == "" {
-		fmt.Println("No URL set as environment variable. Considering proxy deactivation. Stop here")
+	if *URL == "" {
+		fmt.Println("No URL set. Consider the wish to not use it. Exit gracefully. Bye")
 		os.Exit(0)
 	}
 
-	targetUrl, err = url.Parse(URL)
+	targetUrl, err = url.Parse(*URL)
 	if err != nil {
-		fmt.Printf("bad target URL format: %s\n", err.Error())
+		fmt.Printf("bad URL format: %s\n", err.Error())
 		os.Exit(2)
 	}
 
-	// Get the isWithoutTLS environment variable, especially for local tests
-	noTlSEnv := os.Getenv("NOTLS")
-	if strings.ToLower(noTlSEnv) == "true" {
-		isWithoutTLS = true
+	if port > 65535 || port < 1000 {
+		fmt.Printf("port is out of range: %d\n", port)
+		flag.PrintDefaults()
+		os.Exit(3)
 	}
-	fmt.Printf("service URL is %s. TLS mode is %v\n", URL, isWithoutTLS)
+
+	// Set the TLS support mode
+	if *noTLS {
+		isWithTLS = false
+	}
+	fmt.Printf("service URL is %s. TLS mode is %v\n", *URL, isWithTLS)
 
 	// Create the client
 	client.Transport = &http2.Transport{}
 
-	if isWithoutTLS {
+	if !isWithTLS {
 		client.Transport = &http2.Transport{
 			// So http2.Transport doesn't complain the URL scheme isn't 'https'
 			AllowHTTP: true,
@@ -86,7 +97,7 @@ func main() {
 
 	// Manage Cloud Run authentication with identity token support
 	//FIXME only service account key file and GCP metadata server. Need to several lib updates for impersonation support
-	ts, err = idtoken.NewTokenSource(globalCtx, URL)
+	ts, err = idtoken.NewTokenSource(globalCtx, *URL)
 	if err != nil {
 		fmt.Printf("Impossible to create an identity token source because of err %s. The process continues "+
 			"without authentication\n", err)
@@ -94,12 +105,12 @@ func main() {
 	}
 
 	// Listen for incoming connections.
-	l, err := net.Listen(ConnType, ConnHost+":"+ConnPort)
+	l, err := net.Listen(ConnType, fmt.Sprintf("%s:%d", ConnHost, port))
 	if err != nil {
 		fmt.Printf("Error listening: %s\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Listening on %s:%s\n", ConnHost, ConnPort)
+	fmt.Printf("Listening on %s:%d\n", ConnHost, port)
 
 	// Close the listener in case of application stop
 	go func() {

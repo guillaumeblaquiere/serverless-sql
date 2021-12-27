@@ -17,9 +17,13 @@ There is 2 parts at that solution
 * Packaged container to deploy on Cloud Run (or elsewhere): 
   * `us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql`
 * Compiled serverless db proxy
-  * [Windows/amd64](https://storage.cloud.google.com/serverless-db-proxy/master/win64/serverless-db-proxy.exe)
-  * [Linux/amd64](https://storage.cloud.google.com/serverless-db-proxy/master/linux64/serverless-db-proxy)
-  * [Darwin/amd64](https://storage.cloud.google.com/serverless-db-proxy/master/darwin64/serverless-db-proxy)
+  * [Windows/amd64](https://storage.googleapis.com/serverless-db-proxy/win64/serverless-db-proxy.exe)
+  * [Linux/amd64](https://storage.googleapis.com/serverless-db-proxy/mlinux64/serverless-db-proxy)
+  * [Darwin/amd64](https://storage.googleapis.com/serverless-db-proxy/darwin64/serverless-db-proxy)
+* Serverless DB proxy container
+  * `us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-db-proxy`
+* Serverless DB proxy startup script
+  * [Linux/amd64](https://storage.googleapis.com/serverless-db-proxy/startup.sh)
 
 ## Serverless sql container
 
@@ -53,7 +57,7 @@ To deploy the database on Cloud Run follow these steps:
 
 1. Create a bucket (you can also reuse an existing one) and, optionally, activate the versioning and set a lifecycle to
 limit the versioning depth and cost
-```
+```Bash
 # Create the bucket
 gsutil mb gs://<BUCKET_NAME>
 
@@ -81,7 +85,7 @@ gsutil lifecycle set lifecycle.json gs://<BUCKET_NAME>
 
 ```
 2. (optional) Create a service account with the permission to read and write to the bucket
-```
+```Bash
 # Create the service account
 gcloud iam service-accounts create <SA_NAME>
 
@@ -92,7 +96,7 @@ gcloud iam service-accounts list --format="value(email)" | grep <SA_NAME>
 gsutil iam ch serviceAccount:<SA_EMAIL>:objectAdmin gs://<BUCKET_NAME>
 ```
 3. Deploy the container to Cloud Run
-```
+```Bash
 gcloud beta run deploy <SERVICE NAME> --platform=manager \
   --region=<YOUR REGION> \
   --image=us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql \
@@ -128,9 +132,112 @@ Cloud Run (but can run elsewhere)
 
 Download the version of the proxy for your environment (see "Quick Links")
 
+## Proxy parameters
+
+You can configure the proxy with different parameters
+* **url**: Set the URL of the serverless database service to connect. If not set or set to empty string, the proxy 
+exit gracefully. 
+* **port**: The local port to listen. `3306` by default.
+* **no-tls**: Deactivate the TLS support for HTTP/2 protocol (activate the clear text mode -> h2c). False by default, 
+only for local tests
+
+Example
+```Bash
+serverless-db-proxy --url=https://localhost:8080 --no-tls=true --port=4226
+```
+
 ## Use proxy locally
 
+To use it locally, download the binary according to your environment, and run it with proper parameters. The proxy
+run in and wait database connection.
+
+In another environment (your IDE, another shell), run your app or your database connexion on the `localhost:<port>`.
+
 ## Use proxy in container
+
+If your environment allow you to start several container in the same time (Docker compose or Kubernetes Pods), you can
+add that container in the configuration `us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-db-proxy`
+
+If you use the proxy in your container, and you can't define several container in your deployment (like CLoud Run), you
+have to run in background the proxy while you run your app in the container. **The runtime environment must contain
+`/bin/bash` to run the startup script**
+
+The proposed way is a simple wrapping into a startup shell. That way works well but not propagate the 
+signals (TERM or INT for instance to stop the application.). 
+
+*To propagate the signals, you can use [dumb-init](https://github.com/Yelp/dumb-init) as used in
+[serverless-sql Dockerfile](https://github.com/guillaumeblaquiere/serverless-sql/tree/master/serverless-sql/Dockerfile)*
+
+### Container parameters
+
+In the `startup.sh` file that start the proxy and wrap the app execution, you can customize the proxy execution
+parameters with environment variables
+
+* **URL**: *Equivalent to `--url` parameter.* Set the URL of the serverless database service to connect. If not set or 
+set to empty string, the proxy exit gracefully.
+* **PORT**: *Equivalent to `--port` parameter.* The local port to listen. `3306` by default.
+* **NO_TLS**: *Equivalent to `--no-tls` parameter.* Deactivate the TLS support for HTTP/2 protocol (activate the clear
+text mode -> h2c). False by default, only for local tests
+
+### Container layer mode
+
+To import the files directly from the official `serverless-db-proxy` container, you have to
+* Add Serverless db proxy container as layer in your`Dockerfile`, *for instance at the beginning*
+* Copy the `/serverless-db-proxy` binary from the proxy layer to the root path in your final layer
+* Copy the `/startup.sh` script from the proxy layer to the root path in your final layer
+* Define the `/startup.sh` as the entry point of the container
+* Define your app startup command as `CMD` in your final layer
+
+Similar to that
+
+```Dockerfile
+# Import the Serverless db proxy as proxy layer
+FROM us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-db-proxy AS proxy
+
+# Build your container as usual
+FROM ...
+...
+
+# At the end of your build
+# Add the startup script
+COPY --from=proxy /startup.sh / 
+# Add the binary proxy
+COPY --from=proxy /serverless-db-proxy / 
+
+# Define startup.sh as entrypoint
+ENTRYPOINT ["/startup.sh"] 
+
+# Set your app entrypoint as CMD
+CMD ["/my-app"] 
+```
+
+### File download
+
+To download the files directly from the official `serverless-db-proxy` Cloud Storage, you have to
+* Download `/serverless-db-proxy` binary from Cloud Storage to the root path in your final layer
+* Copy the `/startup.sh` script from Cloud Storage to the root path in your final layer
+* Define the `/startup.sh` as the entry point of the container
+* Define your app startup command as `CMD` in your final layer
+
+Similar to that
+
+```Dockerfile
+# Build your container as usual
+FROM ...
+...
+
+# At the end of your build
+# Download the startup script 
+RUN wget https://storage.googleapis.com/serverless-db-proxy/startup.sh -P / && chmod +x /startup.sh
+# Download the binary proxy
+RUN wget https://storage.googleapis.com/serverless-db-proxy/linux64/serverless-db-proxy -P / && chmod +x /serverless-db-proxy
+
+# Define startup.sh as entrypoint
+ENTRYPOINT ["/startup.sh"] 
+
+# Set your app entrypoint as CMD
+CMD ["/my-app"] 
+```
 
 # License
 
