@@ -121,7 +121,10 @@ becomes bigger.
 * **use-http2**: HTTP/2 protocol in bidirectional streaming is used to communicate between the proxy and the service
 * **set-env-vars**: Minimal environment variable:
   * **BUCKET**: Name of the bucket to get and store the database data
-  * **ROOT_PASSWORD**: Root password to connect to the database.
+  * **ROOT_PASSWORD**: Root password to connect to the database. The root password can be stored in 
+  [Secret Manager](https://cloud.google.com/secret-manager). In that case, the `ROOT_PASSWORD` must be provided in 
+  that format `sm://projects/<PROJECT_ID>/secrets/<SECRET_NAME>/versions/<VERSION>`. And the Cloud Run service account
+  must have the access permission to the secret `roles/secretmanager.secretAccessor`.
 
 Use the URL provided by the deployment in the proxy to connect it
 
