@@ -64,15 +64,13 @@ func main() {
 	}
 
 	// Set the TLS support mode
-	if *noTLS {
-		isWithTLS = false
-	}
+	isWithTLS = !*noTLS
+
 	fmt.Printf("service URL is %s. TLS mode is %v\n", *URL, isWithTLS)
 
-	// Create the client
-	client.Transport = &http2.Transport{}
-
-	if !isWithTLS {
+	if isWithTLS {
+		client.Transport = &http2.Transport{}
+	} else {
 		client.Transport = &http2.Transport{
 			// So http2.Transport doesn't complain the URL scheme isn't 'https'
 			AllowHTTP: true,

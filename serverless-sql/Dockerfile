@@ -39,6 +39,8 @@ COPY --from=builder /build/main /
 
 COPY --from=builder /build/startup.sh /
 
+RUN chmod +x /startup.sh
+
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 CMD  ["/startup.sh"]

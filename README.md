@@ -104,6 +104,7 @@ gcloud beta run deploy <SERVICE NAME> --platform=manager \
   --allow-unauthenticated #optionnal. If not, proxy must use authenticated mode \
   --execution-environment gen2 \
   --max-instances=1 \
+  --platform=managed \
   --memory 1024Mi \
   --use-http2 \
   --set-env-vars=BUCKET=<BUCKET_NAME>,ROOT_PASSWORD=<DB ROOT PASSWORD>   
