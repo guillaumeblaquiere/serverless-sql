@@ -18,7 +18,7 @@ There is 2 parts at that solution
   * `us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql`
 * Compiled serverless db proxy
   * [Windows/amd64](https://storage.googleapis.com/serverless-db-proxy/win64/serverless-db-proxy.exe)
-  * [Linux/amd64](https://storage.googleapis.com/serverless-db-proxy/mlinux64/serverless-db-proxy)
+  * [Linux/amd64](https://storage.googleapis.com/serverless-db-proxy/linux64/serverless-db-proxy)
   * [Darwin/amd64](https://storage.googleapis.com/serverless-db-proxy/darwin64/serverless-db-proxy)
 * Serverless DB proxy container
   * `us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-db-proxy`
