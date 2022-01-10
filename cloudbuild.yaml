@@ -3,6 +3,9 @@ steps:
     dir: serverless-sql
     args: [ 'build', '-t', 'us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql', '.' ]
   - name: 'gcr.io/cloud-builders/docker'
+    dir: serverless-sql
+    args: [ 'build', '-t', 'us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql-filestore', '.', '-f', 'Dockerfile-filestore' ]
+  - name: 'gcr.io/cloud-builders/docker'
     dir: serverless-db-proxy
     args: [ 'build', '-t', 'us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-db-proxy', '.' ]
   - name: 'gcr.io/cloud-builders/go'
@@ -25,4 +28,5 @@ steps:
         gsutil -h 'Content-Disposition:filename=serverless-db-proxy'  cp darwin64/serverless-db-proxy gs://serverless-db-proxy/darwin64/
         gsutil -h 'Content-Disposition:filename=startup.sh' cp startup.sh gs://serverless-db-proxy/
 images: ['us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql',
+         'us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-sql-filestore',
         'us-central1-docker.pkg.dev/gblaquiere-dev/public/serverless-db-proxy']

@@ -1,0 +1,40 @@
+FROM golang:1.17 AS builder
+
+# Set necessary environmet variables needed for our image
+ENV GO111MODULE=on \
+ CGO_ENABLED=0 \
+ GOOS=linux \
+ GOARCH=amd64
+
+# Move to working directory /build
+WORKDIR /build
+
+# Copy and download dependency using go mod
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+# Copy the code into the container
+COPY . .
+
+# Build the application
+RUN go build -o main .
+
+#FROM python:3.10-slim
+FROM mysql:8
+
+# Default ARCHIVE name in Cloud Storage.
+ENV ARCHIVE_NAME="mysql-archive.tar"
+
+RUN apt-get update -y && \
+ apt-get install netbase nfs-common dumb-init -y
+
+COPY --from=builder /build/main /
+
+COPY --from=builder /build/startup-filestore.sh /
+
+RUN chmod +x /startup-filestore.sh
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+CMD ["/startup-filestore.sh"]
