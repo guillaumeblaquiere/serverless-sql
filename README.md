@@ -169,7 +169,7 @@ gcloud beta run deploy <SERVICE NAME>  \
   --memory=512Mi \
   --use-http2 \
   --vpc-connector serverless-mysql \
-  --set-env-vars=BUCKET=ROOT_PASSWORD=<DB ROOT PASSWORD>,FILESTORE_IP_ADDRESS=$(gcloud filestore instances describe serverless-mysql --format "value(networks.ipAddresses[0])" --zone=us-central1-a),FILE_SHARE_NAME=mysql_data   
+  --set-env-vars=ROOT_PASSWORD=<DB ROOT PASSWORD>,FILESTORE_IP_ADDRESS=$(gcloud filestore instances describe serverless-mysql --format "value(networks.ipAddresses[0])" --zone=us-central1-a),FILE_SHARE_NAME=mysql_data   
 ```
 
 **Parameters' explanation**
