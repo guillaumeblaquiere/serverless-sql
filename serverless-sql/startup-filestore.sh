@@ -25,7 +25,7 @@ fi
 mkdir -p /var/lib/mysql
 
 echo "Mounting Cloud Filestore."
-mount --verbose -o nolock ${FILESTORE_IP_ADDRESS}:/${FILE_SHARE_NAME}/mysql /var/lib/mysql
+mount --verbose -o nolock ${FILESTORE_IP_ADDRESS}:/${FILE_SHARE_NAME} /var/lib/mysql
 echo "Mounting completed."
 
 # Run MySQL service
