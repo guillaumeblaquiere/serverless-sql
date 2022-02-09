@@ -3,7 +3,8 @@
 That proof of concept use Cloud Run to deploy a SQL database on demand. That solution prevent to use Cloud SQL for 
 development database or for non-critical and low usage production database.
 
-[//]: # (TODO -> link to Medium Article)
+A [Medium Article](https://medium.com/google-cloud/serverless-database-on-cloud-run-1a930eb00618) describes the 
+use case and the path to the target solution
 
 # Technical overview
 
