@@ -20,7 +20,7 @@ COPY . .
 # Build the application
 RUN go build -o main .
 
-FROM mysql:8
+FROM mysql:8-debian
 
 # Default ARCHIVE name in Cloud Storage.
 ENV ARCHIVE_NAME="mysql-archive.tar"
